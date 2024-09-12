@@ -30,6 +30,9 @@ var (
 	selectedItemStyle = lipgloss.NewStyle().PaddingLeft(2).Foreground(lipgloss.Color("170"))
 	paginationStyle   = list.DefaultStyles().PaginationStyle.PaddingLeft(4)
 	helpStyle         = list.DefaultStyles().HelpStyle.PaddingLeft(4).PaddingBottom(1)
+	doneStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("#4a4a4a")).Strikethrough(true).PaddingLeft(4)
+	centered          = lipgloss.NewStyle().Align(lipgloss.Center) //This needs a .Width with terminal width to appropriately center
+	//backgroundStyle   = lipgloss.NewStyle().Background(lipgloss.Color("201"))
 	//quitTextStyle     = lipgloss.NewStyle().Margin(1, 0, 2, 4)
 )
 
@@ -54,6 +57,12 @@ func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list
 	if index == m.Index() {
 		fn = func(s ...string) string {
 			return selectedItemStyle.Render("> " + strings.Join(s, " "))
+		}
+	}
+
+	if index == 1 {
+		fn = func(s ...string) string {
+			return doneStyle.Render(strings.Join(s, " "))
 		}
 	}
 
@@ -122,10 +131,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if task != "" {
 					m.tasks = append(m.tasks, task)
 					m.items = append(m.items, item(task))
-					//const defaultWidth = 20
 					m.list.InsertItem(len(m.items)+1, item(task))
-					// l := list.New(m.items, itemDelegate{}, defaultWidth, listHeight)
-					// m.list = l
 				}
 				// Clear input and return to normal mode
 				m.textInput.Reset()
@@ -140,6 +146,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		if !m.addingTask {
+			switch msg.String() {
+			case "enter":
+				// i, ok := m.list.SelectedItem().(item)
+				m.list.Index()
+				// if ok {
+
+				// }
+			}
+
 			var cmd tea.Cmd
 			m.list, cmd = m.list.Update(msg)
 			return m, cmd
@@ -158,8 +173,13 @@ func (m model) View() string {
 		return fmt.Sprintf("Add a new task: %s\n\nPress Enter to submit or Esc to cancel.", m.textInput.View())
 	}
 
+	//var help string
+	help := helpStyle.Render("Ctrl+A to add new task")
+	//listView := backgroundStyle.Render(m.list.View()) experiment
+	//listView := centered.Render(m.list.View()) //Uncomment for center
+
 	if !m.addingTask {
-		return "\n" + m.list.View()
+		return "\n\n" + m.list.View() + "\n\n" + help
 	}
 
 	return "Welp"
