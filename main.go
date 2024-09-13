@@ -23,6 +23,7 @@ func main() {
 
 const listHeight = 14
 
+// Lipgloss styles cuz brat summer
 var (
 	//taskStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("203")).Bold(true)
 	titleStyle        = lipgloss.NewStyle().MarginLeft(2)
