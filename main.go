@@ -60,11 +60,16 @@ func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list
 		}
 	}
 
-	if index == 1 {
+	if strings.Contains(str, "[X]") {
 		fn = func(s ...string) string {
 			return doneStyle.Render(strings.Join(s, " "))
 		}
 	}
+	// if index == 2 {
+	// 	fn = func(s ...string) string {
+	// 		return doneStyle.Render(strings.Join(s, " "))
+	// 	}
+	// }
 
 	fmt.Fprint(w, fn(str))
 }
@@ -75,6 +80,7 @@ type model struct {
 	list       list.Model
 	addingTask bool
 	items      []list.Item
+	done       []bool
 }
 
 func initialModel() model {
@@ -101,6 +107,7 @@ func initialModel() model {
 		textInput:  ti,
 		list:       l,
 		items:      items,
+		done:       []bool{true},
 	}
 }
 
@@ -149,10 +156,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch msg.String() {
 			case "enter":
 				// i, ok := m.list.SelectedItem().(item)
-				m.list.Index()
-				// if ok {
-
-				// }
+				idx := m.list.Index()
+				i, ok := m.list.SelectedItem().(item)
+				if !ok {
+					panic("Some fucking thing went wrong :P")
+				}
+				it := i + item(" [X]")
+				m.list.SetItem(idx, it)
+			case "delete":
+				idx := m.list.Index()
+				m.list.RemoveItem(idx)
 			}
 
 			var cmd tea.Cmd
