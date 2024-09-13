@@ -31,7 +31,7 @@ var (
 	paginationStyle   = list.DefaultStyles().PaginationStyle.PaddingLeft(4)
 	helpStyle         = list.DefaultStyles().HelpStyle.PaddingLeft(4).PaddingBottom(1)
 	doneStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("#4a4a4a")).Strikethrough(true).PaddingLeft(4)
-	centered          = lipgloss.NewStyle().Align(lipgloss.Center) //This needs a .Width with terminal width to appropriately center
+	//centered          = lipgloss.NewStyle().Align(lipgloss.Center) //This needs a .Width with terminal width to appropriately center
 	//backgroundStyle   = lipgloss.NewStyle().Background(lipgloss.Color("201"))
 	//quitTextStyle     = lipgloss.NewStyle().Margin(1, 0, 2, 4)
 )
