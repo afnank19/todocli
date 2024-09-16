@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 func main() {
@@ -82,6 +83,10 @@ type model struct {
 	addingTask bool
 	items      []list.Item
 	done       []bool
+	taskList   list.Model
+	taskItems  []list.Item
+	taskView   bool
+	choice     string
 }
 
 func initialModel() model {
@@ -95,7 +100,7 @@ func initialModel() model {
 	const defaultWidth = 20
 
 	l := list.New(items, itemDelegate{}, defaultWidth, listHeight)
-	l.Title = "Project Task List"
+	l.Title = "Project List"
 	l.SetShowStatusBar(false)
 	l.SetFilteringEnabled(false)
 	l.Styles.Title = titleStyle
@@ -109,6 +114,8 @@ func initialModel() model {
 		list:       l,
 		items:      items,
 		done:       []bool{true},
+		taskView:   false,
+		choice:     "",
 	}
 }
 
@@ -132,6 +139,31 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, textinput.Blink
 		}
 
+		if m.taskView {
+			switch msg.String() {
+			case "enter":
+				idx := m.list.Index()
+				i, ok := m.list.SelectedItem().(item)
+				if !ok {
+					panic("Some fucking thing went wrong :P")
+				}
+				it := i + item(" [X]")
+				m.list.SetItem(idx, it)
+
+			case "backspace":
+				// refreshItems := []list.Item{}
+				m.list.Title = "Project List"
+				// m.list.SetItems(refreshItems)
+				items := []list.Item{item("Project 1"), item("Lewis")} //Probably a database call to get the project list
+				m.list.SetItems(items)
+				m.taskView = false
+			}
+
+			var cmd tea.Cmd
+			m.list, cmd = m.list.Update(msg)
+			return m, cmd
+		}
+
 		if m.addingTask {
 			switch msg.String() {
 			case "enter":
@@ -153,17 +185,34 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 
-		if !m.addingTask {
+		if !m.addingTask && !m.taskView {
 			switch msg.String() {
 			case "enter":
-				// i, ok := m.list.SelectedItem().(item)
-				idx := m.list.Index()
+				//m.taskView = true
 				i, ok := m.list.SelectedItem().(item)
 				if !ok {
 					panic("Some fucking thing went wrong :P")
 				}
-				it := i + item(" [X]")
-				m.list.SetItem(idx, it)
+
+				//Simulating a database system or some sort of storage
+				var simulatedItems []list.Item
+				if string(i) == "Project 1" {
+					simulatedItems = []list.Item{item("Doja Cat"), item("Sydney Sweeney"), item("Megan Fox")}
+				} else {
+					simulatedItems = []list.Item{item("Do your work"), item("Post a story"), item("dread existence")}
+				}
+
+				m.list.Title = string("$/" + "projects/" + i + "/task-list")
+				m.list.SetItems(simulatedItems)
+				m.taskView = true
+				// i, ok := m.list.SelectedItem().(item)
+				// idx := m.list.Index()
+				// i, ok := m.list.SelectedItem().(item)
+				// if !ok {
+				// 	panic("Some fucking thing went wrong :P")
+				// }
+				// it := i + item(" [X]")
+				// m.list.SetItem(idx, it)
 			case "delete":
 				idx := m.list.Index()
 				m.list.RemoveItem(idx)
@@ -186,6 +235,10 @@ func (m model) View() string {
 	if m.addingTask {
 		return fmt.Sprintf("Add a new task: %s\n\nPress Enter to submit or Esc to cancel.", m.textInput.View())
 	}
+
+	// if m.taskView {
+	// 	return "\n\n" + m.taskList.View()
+	// }
 
 	//var help string
 	help := helpStyle.Render("Ctrl+A to add new task")
