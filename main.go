@@ -25,10 +25,7 @@ func main() {
 
 	defer db.Close()
 
-	_, err = db.Exec("CREATE TABLE IF NOT EXISTS projects (ID INTEGER PRIMARY KEY AUTOINCREMENT, projectName TEXT NOT NULL);")
-	if err != nil {
-		panic(err)
-	}
+	InitDbSchema(db)
 
 	//Test Code, delete db before running
 	// insertQuery := "INSERT INTO projects(projectName) VALUES (?)"
@@ -37,13 +34,25 @@ func main() {
 	// 	panic(err)
 	// }
 
-	initialItems := InitProjectList(db)
+	initialItems, projectIDs := InitProjectList(db)
 
-	p := tea.NewProgram(initialModel(initialItems), tea.WithAltScreen())
+	p := tea.NewProgram(initialModel(initialItems, projectIDs), tea.WithAltScreen())
 
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v", err)
 		os.Exit(1)
+	}
+}
+
+func InitDbSchema(db *sql.DB) {
+	_, err := db.Exec("CREATE TABLE IF NOT EXISTS projects (ID INTEGER PRIMARY KEY AUTOINCREMENT, projectName TEXT NOT NULL UNIQUE);")
+	if err != nil {
+		panic(err)
+	}
+
+	_, err = db.Exec("CREATE TABLE IF NOT EXISTS tasks ( taskID INTEGER PRIMARY KEY AUTOINCREMENT, Task TEXT NOT NULL, projectID INTEGER, FOREIGN KEY (projectID) REFERENCES projects(ID));")
+	if err != nil {
+		panic(err)
 	}
 }
 
@@ -53,7 +62,7 @@ const listHeight = 14
 var (
 	//taskStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("203")).Bold(true)
 	titleStyle        = lipgloss.NewStyle().MarginLeft(2)
-	itemStyle         = lipgloss.NewStyle().PaddingLeft(4)
+	itemStyle         = lipgloss.NewStyle().PaddingLeft(4).Foreground(lipgloss.Color("#d4c6a9"))
 	selectedItemStyle = lipgloss.NewStyle().PaddingLeft(2).Foreground(lipgloss.Color("170"))
 	paginationStyle   = list.DefaultStyles().PaginationStyle.PaddingLeft(4)
 	helpStyle         = list.DefaultStyles().HelpStyle.PaddingLeft(4).PaddingBottom(1)
@@ -88,7 +97,13 @@ func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list
 		}
 	}
 
-	if strings.Contains(str, "[X]") {
+	// if strings.Contains(str, "X") {
+	// 	fn = func(s ...string) string {
+	// 		return doneStyle.Render(strings.Join(s, " "))
+	// 	}
+	// }
+
+	if string(str[3]) == "X" {
 		fn = func(s ...string) string {
 			return doneStyle.Render(strings.Join(s, " "))
 		}
@@ -110,14 +125,16 @@ type model struct {
 	items         []list.Item
 	taskItems     []list.Item
 	tasks         []string
+	projectID     []string
 	choice        string
+	currentProjID string
 	done          []bool
 	addingProject bool
 	taskView      bool
 	addingTask    bool
 }
 
-func InitProjectList(db *sql.DB) []list.Item {
+func InitProjectList(db *sql.DB) ([]list.Item, []string) {
 	rows, err := db.Query("SELECT ID, projectName from projects")
 	if err != nil {
 		panic(err)
@@ -125,6 +142,7 @@ func InitProjectList(db *sql.DB) []list.Item {
 	defer rows.Close()
 
 	var items []list.Item
+	var projectIDs []string
 
 	for rows.Next() {
 		var ID string
@@ -134,12 +152,13 @@ func InitProjectList(db *sql.DB) []list.Item {
 			panic(err)
 		}
 		items = append(items, item(projName))
+		projectIDs = append(projectIDs, ID)
 	}
 
-	return items
+	return items, projectIDs
 }
 
-func initialModel(initialItems []list.Item) model {
+func initialModel(initialItems []list.Item, projectIDs []string) model {
 	ti := textinput.New()
 	ti.Placeholder = "Type something"
 	ti.CharLimit = 100
@@ -151,6 +170,7 @@ func initialModel(initialItems []list.Item) model {
 	taskIn.Width = 40
 
 	items := initialItems
+	projIDs := projectIDs
 
 	const defaultWidth = 20
 
@@ -173,6 +193,8 @@ func initialModel(initialItems []list.Item) model {
 		choice:        "",
 		addingTask:    false,
 		taskInput:     taskIn,
+		projectID:     projIDs,
+		currentProjID: "",
 	}
 }
 
@@ -210,20 +232,30 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if !ok {
 					panic("Some fucking thing went wrong :P")
 				}
-				it := i + item(" [X]")
-				m.list.SetItem(idx, it)
+
+				selectedItem := string(i)
+				if !strings.Contains(selectedItem, "X") {
+					it := item("X ") + i
+					CheckOffTask(db, selectedItem, string(it))
+					m.list.SetItem(idx, it)
+				}
 
 			case "backspace":
 				// refreshItems := []list.Item{}
 				m.list.Title = "Project List"
 				// m.list.SetItems(refreshItems)
-				items := []list.Item{item("Project 1"), item("Lewis")} //Probably a database call to get the project list
+				items, projIDs := InitProjectList(db) //Probably a database call to get the project list
+				m.projectID = projIDs
 				m.list.SetItems(items)
 				m.taskView = false
 
 			case "delete":
 				idx := m.list.Index()
+				currentTask := string(m.list.SelectedItem().(item))
+				DeleteTask(db, currentTask)
+				taskList := GetTasks(db, m.choice)
 				m.list.RemoveItem(idx)
+				m.list.SetItems(taskList)
 			}
 
 			var cmd tea.Cmd
@@ -234,7 +266,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch msg.String() {
 			case "enter":
 				task := strings.TrimSpace(m.taskInput.Value())
+
 				if task != "" {
+					AddTask(db, task, m.currentProjID)
 					m.tasks = append(m.tasks, task)
 					m.items = append(m.items, item(task))
 					m.list.InsertItem(len(m.items)+1, item(task))
@@ -254,18 +288,27 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.addingProject {
 			switch msg.String() {
 			case "enter":
+				//task here refers to project name, to be refactored
 				task := strings.TrimSpace(m.textInput.Value())
 
-				insertQuery := "INSERT INTO projects(projectName) VALUES (?)"
-				_, err := db.Exec(insertQuery, task)
+				insertQuery := "INSERT INTO projects(projectName) VALUES (?);"
+				res, err := db.Exec(insertQuery, task)
 				if err != nil {
 					panic(err)
 				}
+				lastInsertID, err := res.LastInsertId()
+				if err != nil {
+					panic("Last Insert ID")
+				}
+				m.projectID = append(m.projectID, string(lastInsertID))
 
 				if task != "" {
+					projects, projIDs := InitProjectList(db)
+					m.projectID = projIDs
+					m.list.SetItems(projects)
 					m.tasks = append(m.tasks, task)
 					m.items = append(m.items, item(task))
-					m.list.InsertItem(len(m.items)+1, item(task))
+					//m.list.InsertItem(len(m.items)+1, item(task))
 				}
 				// Clear input and return to normal mode
 				m.textInput.Reset()
@@ -288,28 +331,23 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					panic("Some fucking thing went wrong :P")
 				}
 
-				//Simulating a database system or some sort of storage
-				var simulatedItems []list.Item
-				if string(i) == "Project 1" {
-					simulatedItems = []list.Item{item("Doja Cat"), item("Sydney Sweeney"), item("Megan Fox")}
-				} else {
-					simulatedItems = []list.Item{item("Do your work"), item("Post a story"), item("dread existence")}
-				}
+				m.choice = string(i) //Set the chosen project so it can be referenced later
+				m.currentProjID = m.projectID[m.list.Index()]
+
+				var taskList []list.Item
+				taskList = GetTasks(db, string(i))
 
 				m.list.Title = string("$/" + "projects/" + i + "/task-list")
-				m.list.SetItems(simulatedItems)
+				m.list.SetItems(taskList)
 				m.taskView = true
-				// i, ok := m.list.SelectedItem().(item)
-				// idx := m.list.Index()
-				// i, ok := m.list.SelectedItem().(item)
-				// if !ok {
-				// 	panic("Some fucking thing went wrong :P")
-				// }
-				// it := i + item(" [X]")
-				// m.list.SetItem(idx, it)
 			case "delete":
 				idx := m.list.Index()
+				m.currentProjID = m.projectID[idx]
+				DeleteProject(db, m.currentProjID)
 				m.list.RemoveItem(idx)
+				items, projIDs := InitProjectList(db)
+				m.projectID = projIDs
+				m.list.SetItems(items)
 			}
 
 			var cmd tea.Cmd
@@ -325,18 +363,86 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func AddProject(db *sql.DB, projectName string) (int64, error) {
+	insertQuery := "INSERT INTO projects(projectName) VALUES (?);"
+	res, err := db.Exec(insertQuery, projectName)
+	if err != nil {
+		panic(err)
+	}
+
+	return res.LastInsertId()
+}
+
+func DeleteProject(db *sql.DB, projectID string) {
+	taskDeletionQuery := "DELETE FROM tasks WHERE projectID = ?"
+
+	projectDeletionQuery := "DELETE FROM projects WHERE ID = ?"
+
+	_, err := db.Exec(taskDeletionQuery, projectID)
+	if err != nil {
+		panic("In deletion of all tasks related to current project")
+	}
+
+	_, err = db.Exec(projectDeletionQuery, projectID)
+	if err != nil {
+		panic("In deletion of project")
+	}
+}
+
+func GetTasks(db *sql.DB, projectName string) []list.Item {
+	taskQuery := "SELECT Task from tasks WHERE projectID = (SELECT ID FROM projects WHERE projectName = ?)"
+	rows, err := db.Query(taskQuery, projectName)
+	if err != nil {
+		panic(err)
+	}
+	defer rows.Close()
+
+	var items []list.Item
+
+	for rows.Next() {
+		var task string
+		err = rows.Scan(&task)
+		if err != nil {
+			panic(err)
+		}
+		items = append(items, item(task))
+	}
+
+	return items
+}
+
+func AddTask(db *sql.DB, task string, projectID string) {
+	insertQuery := "INSERT INTO tasks(Task, projectID) VALUES (?, ?);"
+	_, err := db.Exec(insertQuery, task, projectID)
+	if err != nil {
+		panic(err)
+	}
+}
+
+func DeleteTask(db *sql.DB, task string) {
+	query := "DELETE FROM tasks WHERE Task = ?"
+	_, err := db.Exec(query, task)
+	if err != nil {
+		panic("Error while deleting")
+	}
+}
+
+func CheckOffTask(db *sql.DB, task string, newTask string) {
+	query := "UPDATE tasks SET Task = ? WHERE Task = ?"
+	_, err := db.Exec(query, newTask, task)
+	if err != nil {
+		panic("Error checking the box")
+	}
+}
+
 func (m model) View() string {
 	if m.addingProject {
-		return fmt.Sprintf("Add a new project: %s\n\nPress Enter to submit or Tab to cancel.", m.textInput.View())
+		return fmt.Sprintf("Add a new project: %s\n\nPress Enter to submit or Tab to cancel.\n\nWARNING: No duplicate project names", m.textInput.View())
 	}
 
 	if m.addingTask {
 		return fmt.Sprintf("Add a new task: %s\n\nPress Enter to submit or Tab to cancel.", m.taskInput.View())
 	}
-
-	// if m.taskView {
-	// 	return "\n\n" + m.taskList.View()
-	// }
 
 	//var help string
 	help := helpStyle.Render("Ctrl+A to add new task")
