@@ -17,8 +17,10 @@ import (
 var db *sql.DB
 
 func main() {
+	DB_PATH := fmt.Sprintf("%s/.config/todo.db", os.Getenv("HOME"))
+
 	var err error
-	db, err = sql.Open("sqlite3", "./todo.db")
+	db, err = sql.Open("sqlite3", DB_PATH)
 	if err != nil {
 		panic(err)
 	}
@@ -56,21 +58,53 @@ func InitDbSchema(db *sql.DB) {
 	}
 }
 
-const listHeight = 14
+const listHeight = 12
 
 // Lipgloss styles cuz brat summer
 var (
-	//taskStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("203")).Bold(true)
-	titleStyle        = lipgloss.NewStyle().MarginLeft(2)
 	itemStyle         = lipgloss.NewStyle().PaddingLeft(4).Foreground(lipgloss.Color("#d4c6a9"))
-	selectedItemStyle = lipgloss.NewStyle().PaddingLeft(2).Foreground(lipgloss.Color("170"))
+	selectedItemStyle = lipgloss.NewStyle().MarginLeft(2).Foreground(lipgloss.Color("#1f1d19")).Background(lipgloss.Color("#d4c6a9")).PaddingRight(1)
 	paginationStyle   = list.DefaultStyles().PaginationStyle.PaddingLeft(4)
 	helpStyle         = list.DefaultStyles().HelpStyle.PaddingLeft(4).PaddingBottom(1)
-	doneStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("#4a4a4a")).Strikethrough(true).PaddingLeft(4)
-	title             = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#d4c6a9")).MarginLeft(2)
-	//centered          = lipgloss.NewStyle().Align(lipgloss.Center) //This needs a .Width with terminal width to appropriately center
-	//backgroundStyle   = lipgloss.NewStyle().Background(lipgloss.Color("201"))
-	//quitTextStyle     = lipgloss.NewStyle().Margin(1, 0, 2, 4)
+	doneStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("#70695a")).Strikethrough(true).PaddingLeft(4)
+	title             = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#d4c6a9")).MarginLeft(0)
+	addingStyle       = lipgloss.NewStyle().MarginLeft(4).MarginTop(1).Foreground(lipgloss.Color("#d4c6a9"))
+	hotKeyStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("#70695a")).MarginBottom(1).MarginLeft(2)
+	creditStyle       = lipgloss.NewStyle().MarginBottom(1).MarginLeft(2)
+	credInfoStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("#70695a"))
+	//Credits Styles below
+	// Main Gruvbox colors
+	gruvboxYellow = "#fabd2f"
+	gruvboxRed    = "#fb4934"
+	gruvboxGreen  = "#b8bb26"
+	gruvboxBlue   = "#83a598"
+	gruvboxPurple = "#d3869b"
+	gruvboxAqua   = "#8ec07c"
+
+	// Styles with foreground and background having the same color
+	StyleYellow = lipgloss.NewStyle().
+			Foreground(lipgloss.Color(gruvboxYellow)).
+			Background(lipgloss.Color(gruvboxYellow))
+
+	StyleRed = lipgloss.NewStyle().
+			Foreground(lipgloss.Color(gruvboxRed)).
+			Background(lipgloss.Color(gruvboxRed))
+
+	StyleGreen = lipgloss.NewStyle().
+			Foreground(lipgloss.Color(gruvboxGreen)).
+			Background(lipgloss.Color(gruvboxGreen))
+
+	StyleBlue = lipgloss.NewStyle().
+			Foreground(lipgloss.Color(gruvboxBlue)).
+			Background(lipgloss.Color(gruvboxBlue))
+
+	StylePurple = lipgloss.NewStyle().
+			Foreground(lipgloss.Color(gruvboxPurple)).
+			Background(lipgloss.Color(gruvboxPurple))
+
+	StyleAqua = lipgloss.NewStyle().
+			Foreground(lipgloss.Color(gruvboxAqua)).
+			Background(lipgloss.Color(gruvboxAqua))
 )
 
 type item string
@@ -108,12 +142,6 @@ func (d itemDelegate) Render(w io.Writer, m list.Model, index int, listItem list
 			return doneStyle.Render(strings.Join(s, " "))
 		}
 	}
-	// if index == 2 {
-	// 	fn = func(s ...string) string {
-	// 		return doneStyle.Render(strings.Join(s, " "))
-	// 	}
-	// }
-
 	fmt.Fprint(w, fn(str))
 }
 
@@ -172,11 +200,12 @@ func initialModel(initialItems []list.Item, projectIDs []string) model {
 	items := initialItems
 	projIDs := projectIDs
 
-	const defaultWidth = 20
+	const defaultWidth = 30
 
 	l := list.New(items, itemDelegate{}, defaultWidth, listHeight)
-	l.Title = "Project List"
+	l.Title = "/projects"
 	l.SetShowStatusBar(false)
+	l.SetShowHelp(false)
 	l.SetFilteringEnabled(false)
 	l.Styles.Title = title
 	l.Styles.PaginationStyle = paginationStyle
@@ -435,22 +464,32 @@ func CheckOffTask(db *sql.DB, task string, newTask string) {
 	}
 }
 
+func CreditStringBuilder() string {
+	green := StyleGreen.Render("__")
+	blue := StyleBlue.Render("__")
+	yellow := StyleYellow.Render("__")
+	red := StyleRed.Render("__")
+	aqua := StyleAqua.Render("__")
+	credInfo := credInfoStyle.Render(" Todo-TUI v1.0 //afn")
+
+	return creditStyle.Render("\n" + green + blue + yellow + red + aqua + credInfo)
+}
+
 func (m model) View() string {
 	if m.addingProject {
-		return fmt.Sprintf("Add a new project: %s\n\nPress Enter to submit or Tab to cancel.\n\nWARNING: No duplicate project names", m.textInput.View())
+		return addingStyle.Render(fmt.Sprintf("Add a new project: %s\n\nPress Enter to submit or Tab to cancel.\n\nWARNING: No duplicate project names", m.textInput.View()))
 	}
 
 	if m.addingTask {
-		return fmt.Sprintf("Add a new task: %s\n\nPress Enter to submit or Tab to cancel.", m.taskInput.View())
+		return addingStyle.Render(fmt.Sprintf("Add a new task: %s\n\nPress Enter to submit or Tab to cancel.", m.taskInput.View()))
 	}
 
 	//var help string
-	help := helpStyle.Render("Ctrl+A to add new task")
-	//listView := backgroundStyle.Render(m.list.View()) experiment
-	//listView := centered.Render(m.list.View()) //Uncomment for center
+	help := hotKeyStyle.Render("ctrl+a: add task/proj  del: delete task/proj  esc/q/ctrl+c: quit  enter: open proj/complete task")
+	var credits string = CreditStringBuilder()
 
 	if !m.addingProject {
-		return "\n\n" + m.list.View() + "\n\n" + help
+		return "\n\n" + m.list.View() + "\n\n" + help + credits
 	}
 
 	return "Welp"
