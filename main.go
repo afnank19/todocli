@@ -17,7 +17,7 @@ import (
 var db *sql.DB
 
 func main() {
-	DB_PATH := fmt.Sprintf("%s/todo.db", os.Getenv("HOME"))
+	DB_PATH := "./todo.db"
 
 	var err error
 	db, err = sql.Open("sqlite3", DB_PATH)
