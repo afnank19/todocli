@@ -470,7 +470,7 @@ func CreditStringBuilder() string {
 	yellow := StyleYellow.Render("__")
 	red := StyleRed.Render("__")
 	aqua := StyleAqua.Render("__")
-	credInfo := credInfoStyle.Render(" Todo-TUI v1.0 //afn")
+	credInfo := credInfoStyle.Render(" Todo-TUI v0.1.0 //afn")
 
 	return creditStyle.Render("\n" + green + blue + yellow + red + aqua + credInfo)
 }
